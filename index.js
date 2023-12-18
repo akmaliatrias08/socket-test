@@ -22,26 +22,38 @@ const io = new Server({
 
 let onlineUsers = [];
 
-const addNewUser = (id, username, socketId) => {
-  !onlineUsers.some(user => user.id !== id) && onlineUsers.push({id, username, socketId})
+const addNewUser = (id, username, notifChannel, socketId) => {
+  if (!onlineUsers.some(user => user.id === id)) {
+    onlineUsers.push({ id, username, notifChannel, socketId });
+  }
 };
 
 const removeUser = (socketId) => {
-  onlineUsers = onlineUsers.filter((user) => user.socketId !== socketId);
+  onlineUsers = onlineUsers.filter((user) =>  user.socketId !== socketId);
 };
+
+const disconnetNotifChannel = (socketId) => {
+  onlineUsers.filter((user) => user.socketId == socketId ? io.leave(user.notifChannel) : "")
+}
 
 const getUser = (id) => {
   return onlineUsers.find((user) => user.id === id);
 };
 
+const getNotifChannelUser = (notifChannel) => {
+  return onlineUsers.find((user) => user.notifChannel === notifChannel);
+};
+
 io.on("connection", (socket) => {
-  socket.on("newUser", ({id, username}) => {
-    addNewUser(id, username, socket.id);
+  socket.on("newUser", ({id, username, notifChannel}) => {
+    addNewUser(id, username, notifChannel, socket.id);
     console.log(onlineUsers)
+    socket.join(notifChannel);
   });
 
   socket.on("disconnect", () => {
     removeUser(socket.id);
+    disconnetNotifChannel(socket.id)
   });
 })
 
@@ -52,10 +64,11 @@ app.get("/", (req, res) => {
 app.post("/notif/send", (req, res) => {
   // Assuming you want to send a notification to a specific user with ID 'userId'
   const data = req?.body?.params;
-  const receiver = getUser(data.channel);
+  const receiver = getNotifChannelUser(data.channel);
 
-  if (receiver) {
-    io.to(receiver.socketId).emit("getNotification", data?.data);
+  if (receiver?.notifChannel) {   
+    io.to(receiver?.notifChannel).emit("getNotification", data?.data);
+
     res.json({ message: 'Notification sent successfully' });
   } else {
     res.status(404).json({ error: 'User not found' });
